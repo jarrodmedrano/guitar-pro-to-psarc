@@ -1,0 +1,19 @@
+[project]
+name = "gp-to-psarc"
+version = "0.1.0"
+description = "Convert Guitar Pro files to Rocksmith 2014 .psarc"
+requires-python = ">=3.10"
+dependencies = [
+    "pyguitarpro>=0.10.1",     # GP3/GP4/GP5 file parsing
+    "pycryptodome>=3.15.0",    # AES encryption for .psarc
+    "midiutil>=1.2.1",         # MIDI generation (used by gp2midi)
+    "Pillow>=10.0",            # Album art resizing (optional, falls back to placeholder)
+]
+
+# External tools required (not pip-installable):
+#   fluidsynth  — MIDI audio rendering (only needed without --audio)
+#   ffmpeg      — Audio conversion
+#   RsCli       — Rocksmith XML → SNG compiler; build from lib/tools/rscli/
+#                 source (slopsmith/rscli/) with: dotnet publish -c Release
+#                 Place output at: lib/tools/rscli/RsCli.exe
+#                 Or set env var: RSCLI_PATH=<path to RsCli.exe>
