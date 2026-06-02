@@ -8,6 +8,7 @@ dependencies = [
     "pycryptodome>=3.15.0",    # AES encryption for .psarc
     "midiutil>=1.2.1",         # MIDI generation (used by gp2midi)
     "Pillow>=10.0",            # Album art resizing (optional, falls back to placeholder)
+    "mutagen>=1.47",           # Audio tag reading (ID3, Vorbis, FLAC)
 ]
 
 # External tools required (not pip-installable):

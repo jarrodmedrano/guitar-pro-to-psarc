@@ -325,16 +325,15 @@ def build_cdlc(
                 for size in [64, 128, 256]:
                     shutil.copy2(album_art_path, art_dir / f"album_{dlc_key}_{size}.dds")
             else:
-                # Convert to DDS using Pillow
                 try:
                     from PIL import Image
                     img = Image.open(album_art_path).convert("RGBA")
                     for size in [64, 128, 256]:
                         resized = img.resize((size, size), Image.LANCZOS)
                         dds_path = art_dir / f"album_{dlc_key}_{size}.dds"
-                        resized.save(str(dds_path))
-                except ImportError:
-                    # Fallback: create minimal placeholder DDS
+                        _write_image_to_dds(resized, dds_path)
+                except Exception as _e:
+                    log.warning("Album art conversion failed (%s), using placeholder", _e)
                     for size in [64, 128, 256]:
                         _write_placeholder_dds(art_dir / f"album_{dlc_key}_{size}.dds", size)
         else:
@@ -376,6 +375,33 @@ def build_cdlc(
 
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
+
+
+def _write_image_to_dds(img, path: Path) -> None:
+    """Write a PIL RGBA image as uncompressed BGRA DDS (same layout as _write_placeholder_dds)."""
+    import struct
+    from PIL import Image
+    size = img.width
+    # DDS stores pixels as BGRA (B in lowest byte) — swap R and B channels
+    r, g, b, a = img.split()
+    bgra = Image.merge("RGBA", (b, g, r, a))
+    pixels = bgra.tobytes()
+
+    header = bytearray(128)
+    header[0:4] = b'DDS '
+    struct.pack_into('<I', header, 4,  124)             # header size
+    struct.pack_into('<I', header, 8,  0x1|0x2|0x4|0x1000)  # flags
+    struct.pack_into('<I', header, 12, size)            # height
+    struct.pack_into('<I', header, 16, size)            # width
+    struct.pack_into('<I', header, 20, size * 4)        # pitch
+    struct.pack_into('<I', header, 76, 32)              # pixel format size
+    struct.pack_into('<I', header, 80, 0x41)            # DDPF_RGB | DDPF_ALPHAPIXELS
+    struct.pack_into('<I', header, 88, 32)              # RGB bit count
+    struct.pack_into('<I', header, 92, 0x00FF0000)      # R mask
+    struct.pack_into('<I', header, 96, 0x0000FF00)      # G mask
+    struct.pack_into('<I', header, 100, 0x000000FF)     # B mask
+    struct.pack_into('<I', header, 104, 0xFF000000)     # A mask
+    path.write_bytes(bytes(header) + pixels)
 
 
 def _write_placeholder_dds(path: Path, size: int):

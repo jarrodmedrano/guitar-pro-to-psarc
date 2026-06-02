@@ -7,6 +7,13 @@ interface Track {
   arrangement: string;
 }
 
+interface AudioMeta {
+  title?: string;
+  artist?: string;
+  album?: string;
+  year?: string;
+}
+
 interface UploadResponse {
   session_id: string;
   title: string;
@@ -280,14 +287,41 @@ async function handleAudioFile(file: File): Promise<void> {
     const res = await fetch("/upload-audio", { method: "POST", body: form });
     if (!res.ok) throw new Error((await res.json()).detail ?? res.statusText);
 
+    const { meta }: { meta: AudioMeta } = await res.json();
+
     audioReady = true;
     audioDropzone.classList.remove("border-zinc-700");
     audioDropzone.classList.add("border-emerald-500");
     audioLabel.innerHTML = `<span class="text-emerald-400">✓ ${file.name}</span>`;
+
+    applyAudioMeta(meta);
   } catch (err) {
     audioLabel.innerHTML = `<span class="text-red-400">Upload failed: ${(err as Error).message}</span>`;
   } finally {
     audioInput.value = "";
+  }
+}
+
+function applyAudioMeta(meta: AudioMeta): void {
+  const fields: Array<[keyof AudioMeta, string]> = [
+    ["title",  "meta-title"],
+    ["artist", "meta-artist"],
+    ["album",  "meta-album"],
+    ["year",   "meta-year"],
+  ];
+  let filled = 0;
+  fields.forEach(([key, id]) => {
+    const input = el<HTMLInputElement>(id);
+    if (!input.value.trim() && meta[key]) {
+      input.value = meta[key]!;
+      input.classList.add("ring-1", "ring-indigo-400");
+      setTimeout(() => input.classList.remove("ring-1", "ring-indigo-400"), 2000);
+      filled++;
+    }
+  });
+  if (filled > 0) {
+    audioLabel.innerHTML = `<span class="text-emerald-400">✓ ${audioLabel.textContent?.replace("✓ ", "") ?? ""}</span>
+      <span class="block text-xs text-indigo-400 mt-0.5">Filled ${filled} field${filled > 1 ? "s" : ""} from audio tags</span>`;
   }
 }
 

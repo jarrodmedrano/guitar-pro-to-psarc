@@ -4,7 +4,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "lib"))
 
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile, WebSocket, WebSocketDisconnect
+from fastapi import BackgroundTasks, FastAPI, File, Form, HTTPException, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -86,7 +86,7 @@ async def upload_audio(session_id: str = Form(...), file: UploadFile = File(...)
     audio_path = session.dir / f"audio{ext}"
     audio_path.write_bytes(data)
     set_audio(session_id, audio_path)
-    return {"ok": True}
+    return {"ok": True, "meta": _audio_metadata(audio_path)}
 
 
 @app.post("/upload-art")
@@ -161,7 +161,7 @@ async def ws_build(
 
 
 @app.get("/download/{session_id}")
-async def download(session_id: str):
+async def download(session_id: str, background_tasks: BackgroundTasks):
     try:
         session = get_session(session_id)
     except KeyError:
@@ -170,20 +170,32 @@ async def download(session_id: str):
     if not session.output_path or not session.output_path.exists():
         raise HTTPException(404, "Build output not ready")
 
-    path = session.output_path
-    filename = path.name
-
-    async def cleanup():
-        delete_session(session_id)
-
-    response = FileResponse(
-        str(path),
+    background_tasks.add_task(delete_session, session_id)
+    return FileResponse(
+        str(session.output_path),
         media_type="application/octet-stream",
-        filename=filename,
+        filename=session.output_path.name,
     )
-    # Delete session after response is sent
-    response.background = asyncio.ensure_future(cleanup())
-    return response
+
+
+def _audio_metadata(audio_path: Path) -> dict:
+    """Extract title/artist/album/year from audio file tags via mutagen."""
+    try:
+        from mutagen import File as MutagenFile
+        tags = MutagenFile(audio_path, easy=True)
+        if tags is None:
+            return {}
+        def first(key: str) -> str:
+            vals = tags.get(key) or []
+            return str(vals[0]).strip() if vals else ""
+        return {
+            "title":  first("title"),
+            "artist": first("artist"),
+            "album":  first("album"),
+            "year":   first("date")[:4],   # date tag is often "2011-05-10"
+        }
+    except Exception:
+        return {}
 
 
 def _extract_metadata(gp_path: str) -> tuple[str, str, str]:
