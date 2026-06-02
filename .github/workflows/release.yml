@@ -1,0 +1,182 @@
+name: Release
+
+# Triggers:
+#   - Push a semver tag:  git tag v1.2.3 && git push origin v1.2.3
+#   - Manual run from the Actions tab (set version in the input)
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'   # semver only: v1.2.3 — not v1 or vbeta
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version number (e.g. 1.2.3 — no leading v)'
+        required: true
+
+# ── Security: deny all permissions by default; grant only what each job needs ──
+permissions:
+  contents: read
+
+# Prevent duplicate release builds if two tags land close together
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false   # never cancel a release mid-flight
+
+jobs:
+  build-and-release:
+    name: Build Windows .exe and publish release
+    runs-on: windows-latest
+
+    permissions:
+      contents: write   # required to create the GitHub Release and upload assets
+
+    steps:
+      # ── Source ────────────────────────────────────────────────────────────
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # ── Determine version string ───────────────────────────────────────────
+      - name: Resolve version
+        id: ver
+        shell: bash
+        run: |
+          if [[ "${{ github.event_name }}" == "push" ]]; then
+            # Strip the leading 'v' from the tag name (v1.2.3 → 1.2.3)
+            VERSION="${GITHUB_REF_NAME#v}"
+          else
+            VERSION="${{ github.event.inputs.version }}"
+          fi
+          # Validate: must match x.y.z
+          if ! [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Invalid version format '$VERSION' — expected x.y.z"
+            exit 1
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Resolved version: $VERSION"
+
+      # ── Runtimes ──────────────────────────────────────────────────────────
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+
+      - name: Set up Node.js 20 LTS
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - name: Set up .NET 10 SDK
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      # ── Python dependencies ────────────────────────────────────────────────
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install `
+            pyguitarpro `
+            pycryptodome `
+            midiutil `
+            Pillow `
+            mutagen `
+            fastapi `
+            "uvicorn[standard]" `
+            python-multipart `
+            pyinstaller
+        shell: pwsh
+
+      # ── Frontend ──────────────────────────────────────────────────────────
+      - name: Install npm dependencies
+        # Use 'npm ci' (lockfile-exact) and override the repo's strict-ssl=false
+        # — GitHub-hosted runners have valid certs, so we enforce SSL here.
+        run: npm ci --strict-ssl=true
+        env:
+          npm_config_strict_ssl: 'true'
+
+      - name: Build TypeScript + Tailwind CSS
+        run: npm run build
+        env:
+          npm_config_strict_ssl: 'true'
+
+      # ── RsCli (F# XML→SNG compiler) ───────────────────────────────────────
+      - name: Build RsCli
+        shell: pwsh
+        run: |
+          # Clone the Rocksmith2014.NET library that RsCli depends on
+          git clone --depth 1 https://github.com/iminashi/Rocksmith2014.NET.git "$env:RUNNER_TEMP\rs2014"
+
+          # Inject our RsCli source into the expected location inside the repo
+          $rscliDir = "$env:RUNNER_TEMP\rs2014\tools\RsCli"
+          New-Item -ItemType Directory -Force $rscliDir | Out-Null
+          Copy-Item "rscli\RsCli.fsproj" $rscliDir
+          Copy-Item "rscli\Program.fs"   $rscliDir
+
+          # Silence NuGet audit warnings (matches the slopsmith Dockerfile approach)
+          $propsFile = "$env:RUNNER_TEMP\rs2014\Directory.Build.props"
+          (Get-Content $propsFile) -replace '</PropertyGroup>', '<NuGetAudit>false</NuGetAudit></PropertyGroup>' |
+            Set-Content $propsFile
+
+          # Publish a self-contained win-x64 binary into lib/tools/rscli/
+          $outDir = "$env:GITHUB_WORKSPACE\lib\tools\rscli"
+          dotnet publish "$rscliDir\RsCli.fsproj" `
+            -c Release `
+            -r win-x64 `
+            --self-contained `
+            -o $outDir
+
+          # Verify the binary was produced
+          if (-not (Test-Path "$outDir\RsCli.exe")) {
+            Write-Error "RsCli.exe not found after build"
+            exit 1
+          }
+          Write-Output "RsCli.exe built: $((Get-Item "$outDir\RsCli.exe").Length) bytes"
+
+      # ── PyInstaller bundle ────────────────────────────────────────────────
+      - name: Build distributable with PyInstaller
+        run: python build_dist.py --version ${{ steps.ver.outputs.version }} --skip-npm
+
+      # ── Checksum ──────────────────────────────────────────────────────────
+      - name: Generate SHA-256 checksum
+        id: checksum
+        shell: pwsh
+        run: |
+          $zip = Get-Item "gp-to-psarc-v*.zip" | Select-Object -First 1
+          if (-not $zip) { Write-Error "No zip file found"; exit 1 }
+          $hash = (Get-FileHash $zip.FullName -Algorithm SHA256).Hash
+          "$hash  $($zip.Name)" | Out-File checksums.txt -Encoding utf8NoBOM
+          echo "zip_name=$($zip.Name)" >> $env:GITHUB_OUTPUT
+          Write-Output "SHA-256: $hash"
+          Write-Output "File:    $($zip.Name)"
+
+      # ── GitHub Release ────────────────────────────────────────────────────
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: gp-to-psarc v${{ steps.ver.outputs.version }}
+          body: |
+            ## Install
+
+            1. Download **`${{ steps.checksum.outputs.zip_name }}`**
+            2. Unzip anywhere on your PC
+            3. Double-click **`gp-to-psarc.exe`** — your browser opens automatically
+
+            ## Requirements
+
+            - [ffmpeg](https://ffmpeg.org/download.html) on PATH (`winget install ffmpeg`)
+            - [FluidSynth](https://www.fluidsynth.org/) + a soundfont — only needed if you want auto-generated MIDI audio instead of supplying your own
+
+            ## Verify download integrity
+
+            ```
+            certutil -hashfile ${{ steps.checksum.outputs.zip_name }} SHA256
+            ```
+            Compare the output against `checksums.txt`.
+          files: |
+            gp-to-psarc-v*.zip
+            checksums.txt
+          fail_on_unmatched_files: true
+          generate_release_notes: true
