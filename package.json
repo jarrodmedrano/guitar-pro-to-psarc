@@ -1,0 +1,17 @@
+{
+  "name": "gp-to-psarc-ui",
+  "private": true,
+  "scripts": {
+    "build:ts":  "esbuild web/ts/app.ts --bundle --outfile=web/static/app.js --target=es2020",
+    "build:css": "npx @tailwindcss/cli -i web/css/input.css -o web/static/app.css --minify",
+    "build":     "npm run build:ts && npm run build:css",
+    "watch":     "concurrently \"npm run build:ts -- --watch\" \"npx @tailwindcss/cli -i web/css/input.css -o web/static/app.css --watch\""
+  },
+  "devDependencies": {
+    "esbuild": "^0.25.0",
+    "typescript": "^5.8.0",
+    "tailwindcss": "^4.0.0",
+    "@tailwindcss/cli": "^4.0.0",
+    "concurrently": "^9.0.0"
+  }
+}

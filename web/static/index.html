@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en" class="h-full">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GP to PSARC</title>
+  <link rel="stylesheet" href="/static/app.css" />
+</head>
+<body class="h-full bg-zinc-950 text-zinc-100 font-sans antialiased">
+  <div class="min-h-full flex flex-col items-center justify-center p-6">
+    <header class="mb-10 text-center">
+      <h1 class="text-3xl font-bold tracking-tight text-white">GP → PSARC</h1>
+      <p class="mt-1 text-sm text-zinc-400">Guitar Pro to Rocksmith 2014</p>
+    </header>
+
+    <!-- Panel: Drop zone -->
+    <div id="panel-drop" class="w-full max-w-lg">
+      <div
+        id="dropzone"
+        class="flex flex-col items-center justify-center gap-4 rounded-2xl border-2 border-dashed border-zinc-700 bg-zinc-900 px-8 py-16 text-center transition-colors cursor-pointer hover:border-indigo-500 hover:bg-zinc-800"
+      >
+        <svg class="h-12 w-12 text-zinc-500" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
+        </svg>
+        <div>
+          <p class="text-lg font-medium text-zinc-200">Drop a Guitar Pro file here</p>
+          <p class="mt-1 text-sm text-zinc-400">or click to browse &mdash; .gp, .gp5, .gpx, .gp4, .gp3</p>
+        </div>
+        <input id="gp-input" type="file" class="hidden" accept=".gp,.gp3,.gp4,.gp5,.gpx" />
+      </div>
+      <p id="drop-error" class="mt-3 hidden text-sm text-red-400 text-center"></p>
+    </div>
+
+    <!-- Panel: Parsed / configure -->
+    <div id="panel-parsed" class="hidden w-full max-w-lg space-y-6">
+      <!-- Metadata -->
+      <div class="rounded-2xl bg-zinc-900 p-6 space-y-4">
+        <h2 class="text-sm font-semibold uppercase tracking-widest text-zinc-400">Song Info</h2>
+        <div class="grid grid-cols-1 gap-3">
+          <div>
+            <label class="block text-xs text-zinc-400 mb-1" for="meta-title">Title</label>
+            <input id="meta-title" type="text" class="w-full rounded-lg bg-zinc-800 border border-zinc-700 px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+          </div>
+          <div>
+            <label class="block text-xs text-zinc-400 mb-1" for="meta-artist">Artist</label>
+            <input id="meta-artist" type="text" class="w-full rounded-lg bg-zinc-800 border border-zinc-700 px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+          </div>
+          <div class="grid grid-cols-2 gap-3">
+            <div>
+              <label class="block text-xs text-zinc-400 mb-1" for="meta-album">Album</label>
+              <input id="meta-album" type="text" class="w-full rounded-lg bg-zinc-800 border border-zinc-700 px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+            </div>
+            <div>
+              <label class="block text-xs text-zinc-400 mb-1" for="meta-year">Year</label>
+              <input id="meta-year" type="text" maxlength="4" placeholder="2024" class="w-full rounded-lg bg-zinc-800 border border-zinc-700 px-3 py-2 text-sm text-white focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Album art -->
+      <div class="rounded-2xl bg-zinc-900 p-6 space-y-3">
+        <h2 class="text-sm font-semibold uppercase tracking-widest text-zinc-400">Album Art</h2>
+        <div class="flex items-start gap-4">
+          <div
+            id="art-dropzone"
+            class="relative flex h-24 w-24 shrink-0 items-center justify-center rounded-xl border-2 border-dashed border-zinc-700 bg-zinc-800 cursor-pointer overflow-hidden transition-colors hover:border-indigo-500"
+          >
+            <img id="art-preview" class="hidden absolute inset-0 h-full w-full object-cover" alt="Album art preview" />
+            <svg id="art-icon" class="h-8 w-8 text-zinc-500" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M2.25 15.75l5.159-5.159a2.25 2.25 0 013.182 0l5.159 5.159m-1.5-1.5l1.409-1.409a2.25 2.25 0 013.182 0l2.909 2.909m-18 3.75h16.5a1.5 1.5 0 001.5-1.5V6a1.5 1.5 0 00-1.5-1.5H3.75A1.5 1.5 0 002.25 6v12a1.5 1.5 0 001.5 1.5zm10.5-11.25h.008v.008h-.008V8.25zm.375 0a.375.375 0 11-.75 0 .375.375 0 01.75 0z" />
+            </svg>
+            <input id="art-input" type="file" class="hidden" accept=".jpg,.jpeg,.png,.webp,.dds" />
+          </div>
+          <div class="flex-1 min-w-0">
+            <p id="art-label" class="text-sm text-zinc-400">Drop an image or click to browse</p>
+            <p class="mt-1 text-xs text-zinc-500">jpg, png, webp — max 5 MB<br>Optional — placeholder used if omitted</p>
+          </div>
+        </div>
+      </div>
+
+      <!-- Tracks -->
+      <div class="rounded-2xl bg-zinc-900 p-6 space-y-3">
+        <h2 class="text-sm font-semibold uppercase tracking-widest text-zinc-400">Tracks</h2>
+        <div id="track-list" class="space-y-2"></div>
+      </div>
+
+      <!-- Audio -->
+      <div class="rounded-2xl bg-zinc-900 p-6 space-y-3">
+        <h2 class="text-sm font-semibold uppercase tracking-widest text-zinc-400">Audio</h2>
+        <div
+          id="audio-dropzone"
+          class="flex items-center justify-center gap-3 rounded-xl border-2 border-dashed border-zinc-700 bg-zinc-800/50 px-4 py-5 text-center transition-colors cursor-pointer hover:border-indigo-500"
+        >
+          <svg class="h-5 w-5 shrink-0 text-zinc-400" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M9 9l10.5-3m0 6.553v3.75a2.25 2.25 0 01-1.632 2.163l-1.32.377a1.803 1.803 0 01-.99-3.467l2.31-.66a2.25 2.25 0 001.632-2.163zm0 0V2.25L9 5.25v10.303m0 0v3.75a2.25 2.25 0 01-1.632 2.163l-1.32.377a1.803 1.803 0 01-.99-3.467l2.31-.66A2.25 2.25 0 009 15.553z" />
+          </svg>
+          <div id="audio-label" class="text-sm text-zinc-400">
+            Drop an audio file (mp3/ogg/wav) or click to browse
+            <span class="block text-xs text-zinc-500 mt-0.5">Optional — MIDI audio used if omitted</span>
+          </div>
+          <input id="audio-input" type="file" class="hidden" accept=".mp3,.ogg,.wav,.flac" />
+        </div>
+      </div>
+
+      <button
+        id="build-btn"
+        class="w-full rounded-xl bg-indigo-600 px-4 py-3 text-sm font-semibold text-white transition-colors hover:bg-indigo-500 active:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed"
+      >
+        Build PSARC
+      </button>
+      <button id="back-btn" class="w-full text-sm text-zinc-500 hover:text-zinc-300 transition-colors">
+        ← Start over
+      </button>
+    </div>
+
+    <!-- Panel: Progress -->
+    <div id="panel-progress" class="hidden w-full max-w-lg">
+      <div class="rounded-2xl bg-zinc-900 p-8 space-y-5">
+        <h2 class="text-base font-semibold text-white">Building…</h2>
+        <div class="w-full bg-zinc-800 rounded-full h-2 overflow-hidden">
+          <div id="progress-bar" class="h-2 rounded-full bg-indigo-500 transition-all duration-300" style="width:0%"></div>
+        </div>
+        <p id="progress-stage" class="text-sm text-zinc-400"></p>
+      </div>
+    </div>
+
+    <!-- Panel: Result -->
+    <div id="panel-result" class="hidden w-full max-w-lg space-y-4">
+      <div id="result-success" class="hidden rounded-2xl bg-emerald-950 border border-emerald-800 p-8 text-center space-y-4">
+        <div class="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-emerald-900">
+          <svg class="h-6 w-6 text-emerald-400" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12.75l6 6 9-13.5" />
+          </svg>
+        </div>
+        <div>
+          <p class="font-semibold text-emerald-200">PSARC created!</p>
+          <p id="result-filename" class="mt-1 text-sm text-emerald-400 font-mono"></p>
+        </div>
+        <a id="download-link" href="#" class="inline-flex items-center gap-2 rounded-xl bg-emerald-700 px-6 py-3 text-sm font-semibold text-white hover:bg-emerald-600 transition-colors">
+          <svg class="h-4 w-4" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5M16.5 12L12 16.5m0 0L7.5 12m4.5 4.5V3" />
+          </svg>
+          Download
+        </a>
+      </div>
+
+      <div id="result-error" class="hidden rounded-2xl bg-red-950 border border-red-800 p-6 space-y-2">
+        <p class="font-semibold text-red-300">Build failed</p>
+        <p id="error-message" class="text-sm text-red-400"></p>
+      </div>
+
+      <button id="again-btn" class="w-full text-sm text-zinc-500 hover:text-zinc-300 transition-colors">
+        ← Convert another file
+      </button>
+    </div>
+  </div>
+
+  <script type="module" src="/static/app.js"></script>
+</body>
+</html>
