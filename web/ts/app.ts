@@ -3,6 +3,7 @@ interface Track {
   name: string;
   strings: number;
   notes: number;
+  is_drums: boolean;
   selected: boolean;
   arrangement: string;
 }
@@ -141,7 +142,9 @@ function renderTracks(tracks: Track[]): void {
 
     const badge = document.createElement("span");
     badge.className = "text-xs text-zinc-500";
-    badge.textContent = `${t.strings}str · ${t.notes}n`;
+    badge.textContent = t.is_drums
+      ? `drums · ${t.notes}n`
+      : `${t.strings}str · ${t.notes}n`;
 
     const select = document.createElement("select");
     select.className = "rounded bg-zinc-700 border border-zinc-600 px-2 py-1 text-xs text-zinc-200 focus:outline-none focus:ring-1 focus:ring-indigo-500";
@@ -156,6 +159,13 @@ function renderTracks(tracks: Track[]): void {
     row.appendChild(checkbox);
     row.appendChild(label);
     row.appendChild(badge);
+    if (t.is_drums) {
+      const warn = document.createElement("span");
+      warn.className = "text-xs text-amber-500 shrink-0";
+      warn.title = "Rocksmith has no drums arrangement — including this may cause the game to default to the wrong track";
+      warn.textContent = "⚠ not for RS";
+      row.appendChild(warn);
+    }
     row.appendChild(select);
     list.appendChild(row);
   });

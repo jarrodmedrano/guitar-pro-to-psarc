@@ -52,7 +52,9 @@ async def upload(file: UploadFile = File(...)):
             "name": t["name"],
             "strings": t["strings"],
             "notes": t["notes"],
-            "selected": t["index"] in track_indices,
+            "is_drums": t.get("is_drums", False),
+            # Drums have no Rocksmith arrangement type — exclude by default
+            "selected": t["index"] in track_indices and not t.get("is_drums", False),
             "arrangement": name_map.get(t["index"], "Lead"),
         }
         for t in all_tracks
