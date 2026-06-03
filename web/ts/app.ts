@@ -379,6 +379,7 @@ el("auto-detect-btn").addEventListener("click", async () => {
 // ── Back / again buttons ─────────────────────────────────────────────────────
 
 el("back-btn").addEventListener("click", () => showPanel("panel-drop"));
+el("edit-btn").addEventListener("click", () => showPanel("panel-parsed"));
 el("again-btn").addEventListener("click", () => showPanel("panel-drop"));
 
 // ── Build ────────────────────────────────────────────────────────────────────

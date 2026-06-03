@@ -507,8 +507,8 @@ def build_cdlc(
         # ── Pack PSARC ────────────────────────────────────────────────────
         progress("Packing PSARC...", 90)
         if not output_path:
-            safe_title = re.sub(r'[<>:"/\\|?*]', '_', title)
-            safe_artist = re.sub(r'[<>:"/\\|?*]', '_', artist)
+            safe_title = re.sub(r'[<>:"/\\|?*\s]+', '_', title)
+            safe_artist = re.sub(r'[<>:"/\\|?*\s]+', '_', artist)
             output_path = f"{safe_title}_{safe_artist}_p.psarc"
 
         pack_psarc(str(build_dir), output_path)

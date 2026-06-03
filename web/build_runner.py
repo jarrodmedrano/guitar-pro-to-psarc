@@ -24,7 +24,7 @@ class BuildParams:
 
 
 def _safe(s: str) -> str:
-    return re.sub(r'[<>:"/\\|?*]', "_", s).strip("_") or "unknown"
+    return re.sub(r'[<>:"/\\|?*\s]+', "_", s).strip("_") or "unknown"
 
 
 def run_build(params: BuildParams, report: ProgressFn, result_queue) -> None:

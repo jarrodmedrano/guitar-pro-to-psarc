@@ -65,7 +65,9 @@ def convert(
     year = year or ""
 
     if output is None:
-        output = str(Path(gp_path).with_suffix(".psarc"))
+        import re
+        safe_stem = re.sub(r'[<>:"/\\|?*\s]+', '_', Path(gp_path).stem).strip('_') or 'output'
+        output = str(Path(gp_path).with_name(f"{safe_stem}.psarc"))
 
     track_indices, arrangement_names = auto_select_tracks(gp_path)
     if not track_indices:

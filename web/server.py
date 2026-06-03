@@ -4,12 +4,12 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "lib"))
 
-from fastapi import BackgroundTasks, FastAPI, File, Form, HTTPException, UploadFile, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from web.build_runner import BuildParams, run_build
-from web.sessions import create_session, delete_session, get_session, set_art, set_audio
+from web.sessions import create_session, get_session, set_art, set_audio
 
 _STATIC = Path(__file__).parent / "static"
 _GP_EXTENSIONS    = {".gp", ".gp3", ".gp4", ".gp5", ".gpx"}
@@ -180,7 +180,7 @@ async def ws_build(
 
 
 @app.get("/download/{session_id}")
-async def download(session_id: str, background_tasks: BackgroundTasks):
+async def download(session_id: str):
     try:
         session = get_session(session_id)
     except KeyError:
@@ -189,7 +189,6 @@ async def download(session_id: str, background_tasks: BackgroundTasks):
     if not session.output_path or not session.output_path.exists():
         raise HTTPException(404, "Build output not ready")
 
-    background_tasks.add_task(delete_session, session_id)
     return FileResponse(
         str(session.output_path),
         media_type="application/octet-stream",
