@@ -169,7 +169,7 @@ def pack_psarc(input_dir, output_path):
     files = []
     for f in sorted(input_dir.rglob('*')):
         if f.is_file():
-            rel = str(f.relative_to(input_dir))
+            rel = f.relative_to(input_dir).as_posix()
             files.append((rel, f.read_bytes()))
 
     file_list = '\n'.join(name for name, _ in files) + '\n'
@@ -189,13 +189,24 @@ def pack_psarc(input_dir, output_path):
 
         while offset < len(entry_data):
             chunk = entry_data[offset:offset + block_size]
-            compressed = zlib.compress(chunk)
+            is_full_block = len(chunk) == block_size
+            # Level 9 produces the 0x78DA header; Rocksmith2014.NET's hasZlibHeader
+            # specifically checks for that byte pair — other levels (e.g. default 6)
+            # produce 0x789C and are treated as raw bytes, corrupting reads.
+            compressed = zlib.compress(chunk, 9)
             if len(compressed) < len(chunk):
+                # Compressed is smaller — always use it
                 entry_blocks.append(compressed)
                 block_sizes.append(len(compressed))
-            else:
+            elif is_full_block:
+                # Full block stored raw. Convention: size=0 means "full blockSize raw block"
                 entry_blocks.append(chunk)
                 block_sizes.append(0)
+            else:
+                # Partial block stored raw. Must store actual size — using 0 here would
+                # tell the reader to consume a full 65536 bytes, corrupting everything after.
+                entry_blocks.append(chunk)
+                block_sizes.append(len(chunk))
             offset += block_size
 
         if not entry_blocks:

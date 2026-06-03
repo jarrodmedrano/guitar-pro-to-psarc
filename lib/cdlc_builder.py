@@ -5,9 +5,11 @@ import logging
 import os
 import re
 import shutil
+import struct
 import subprocess
 import tempfile
 import uuid
+import zlib
 from pathlib import Path
 
 log = logging.getLogger("slopsmith.lib.cdlc_builder")
@@ -15,6 +17,43 @@ log = logging.getLogger("slopsmith.lib.cdlc_builder")
 from patcher import pack_psarc
 
 RSCLI = Path(os.environ.get("RSCLI_PATH", str(Path(__file__).parent / "tools" / "rscli" / "RsCli")))
+
+def _bnk_chunk(name: bytes, data: bytes) -> bytes:
+    return name + struct.pack('<I', len(data)) + data
+
+def _generate_bnk(file_id: int, bank_id: int) -> bytes:
+    """Generate a minimal Wwise sound bank readable by the Rocksmith2014.NET PsarcImporter.
+
+    The importer calls SoundBank.readFileId which seeks to the DIDX section and
+    reads the first int32.  readVolume (HIRC) failure is silently swallowed (→ 0 dB),
+    so we only need BKHD + DIDX.  Platform = PC = little-endian.
+    """
+    # BKHD: version(91), soundbankID, languageID=0, hasFeedback=0, padding×3
+    bkhd = struct.pack('<IIIIIII', 91, bank_id & 0xFFFFFFFF, 0, 0, 0, 0, 0)
+    # DIDX: fileID, fileOffset=0, fileLength=0  (no embedded audio — it's streamed)
+    didx = struct.pack('<iii', file_id & 0x7FFFFFFF, 0, 0)
+    return _bnk_chunk(b'BKHD', bkhd) + _bnk_chunk(b'DIDX', didx)
+
+# Static schema file required by DLC Builder / PsarcImporter — identical across all PSARCs
+_RSENUMERABLE_SONG_FLAT = (
+    b'\xef\xbb\xbf'   # UTF-8 BOM
+    b'<?xml version="1.0" encoding="utf-8"?>\r\n'
+    b'<model\r\n  name="RSEnumerable_Song"\r\n  id="3871465268">\r\n'
+    b'  <trait\r\n    value="Active" />\r\n'
+    b'  <mixin\r\n    name="RSEnumerable_Root"\r\n    id="1917312803"\r\n    type="Active" />\r\n'
+    b'  <property\r\n    type="AssetID"\r\n    name="XmlAsset"\r\n    id="194332538">\r\n    <set\r\n      value="" />\r\n  </property>\r\n'
+    b'  <property\r\n    type="AssetID"\r\n    name="SngAsset"\r\n    id="2132105560">\r\n    <set\r\n      value="" />\r\n  </property>\r\n'
+    b'  <property\r\n    type="AssetID"\r\n    name="AlbumArtSmall"\r\n    id="2295103720">\r\n    <set\r\n      value="" />\r\n  </property>\r\n'
+    b'  <property\r\n    type="AssetID"\r\n    name="AlbumArtMedium"\r\n    id="3067535336">\r\n    <set\r\n      value="" />\r\n  </property>\r\n'
+    b'  <property\r\n    type="AssetID"\r\n    name="AlbumArtLarge"\r\n    id="223887511">\r\n    <set\r\n      value="" />\r\n  </property>\r\n'
+    b'  <property\r\n    type="AssetID"\r\n    name="LyricArt"\r\n    id="3842719743">\r\n    <set\r\n      value="" />\r\n  </property>\r\n'
+    b'  <property\r\n    type="AssetID"\r\n    name="ShowLightsXMLAsset"\r\n    id="2024527203">\r\n    <set\r\n      value="" />\r\n  </property>\r\n'
+    b'  <property\r\n    type="AssetID"\r\n    name="SoundBank"\r\n    id="4177482269">\r\n    <set\r\n      value="" />\r\n  </property>\r\n'
+    b'  <property\r\n    type="AssetID"\r\n    name="PreviewSoundBank"\r\n    id="1820138184">\r\n    <set\r\n      value="" />\r\n  </property>\r\n'
+    b'  <property\r\n    type="AssetID"\r\n    name="Manifest"\r\n    id="3402662178">\r\n    <set\r\n      value="" />\r\n  </property>\r\n'
+    b'  <property\r\n    type="AssetID"\r\n    name="Header"\r\n    id="3529813182">\r\n    <set\r\n      value="" />\r\n  </property>\r\n'
+    b'</model>'
+)
 WW2OGG = Path(__file__).parent / "tools" / "dlcbuilder-linux" / "Tools" / "ww2ogg"
 REVORB = Path(__file__).parent / "tools" / "dlcbuilder-linux" / "Tools" / "revorb"
 CODEBOOKS = Path(__file__).parent / "tools" / "dlcbuilder-linux" / "Tools" / "packed_codebooks_aoTuV_603.bin"
@@ -32,45 +71,136 @@ def _generate_manifest(
     dlc_key: str, arrangement_name: str, song_title: str,
     artist: str, album: str, year: str, song_length: float,
     tuning: list[int], persistent_id: str, master_id: int,
+    is_represent: bool = True,
 ) -> dict:
     """Generate a Rocksmith manifest JSON for an arrangement."""
     arr_lower = arrangement_name.lower()
-    route_mask = 4 if arr_lower == "bass" else (2 if arr_lower == "rhythm" else 1)
+    is_bass = arr_lower == "bass"
+    is_lead = arr_lower == "lead"
+    route_mask = 4 if is_bass else (2 if arr_lower == "rhythm" else 1)
+
+    # Tuning: ensure 6 strings, values are semitone offsets from standard tuning
+    tuning_dict = {f"string{i}": (tuning[i] if i < len(tuning) else 0) for i in range(6)}
+
+    # ArrangementProperties: required by DLC Builder PsarcImporter (Option.get crashes if absent).
+    # Field names must match the F# record exactly (case-sensitive with JsonFSharpConverter).
+    arr_props = {
+        "represent":         1 if is_represent else 0,
+        "bonusArr":          0,
+        "standardTuning":    1,
+        "nonStandardChords": 0,
+        "barreChords":       0,
+        "powerChords":       0,
+        "dropDPower":        0,
+        "openChords":        0,
+        "fingerPicking":     0,   # capital P — matches F# field name
+        "pickDirection":     0,
+        "doubleStops":       0,
+        "palmMutes":         0,
+        "harmonics":         0,
+        "pinchHarmonics":    0,
+        "hopo":              0,
+        "tremolo":           0,
+        "slides":            0,
+        "unpitchedSlides":   0,
+        "bends":             0,
+        "tapping":           0,
+        "vibrato":           0,
+        "fretHandMutes":     0,
+        "slapPop":           0,
+        "twoFingerPicking":  0,
+        "fifthsAndOctaves":  0,
+        "syncopation":       0,
+        "bassPick":          1 if is_bass else 0,
+        "sustain":           0,
+        "pathLead":          1 if is_lead else 0,
+        "pathRhythm":        0 if (is_bass or is_lead) else 1,
+        "pathBass":          1 if is_bass else 0,
+        "routeMask":         route_mask,
+    }
+
+    # DynamicVisualDensity: 20-element scroll speed curve (required for scrollSpeed calc)
+    dynamic_density = [5.0, 4.7, 4.4, 4.1, 3.8, 3.5, 3.3, 3.1,
+                       2.8, 2.6, 2.4, 2.1, 1.9, 1.7, 1.6, 1.5,
+                       1.4, 1.3, 1.3, 1.3]
+
+    dlc_key_camel = dlc_key  # use as-is; DLCKey casing
 
     return {
         "Entries": {
             persistent_id: {
                 "Attributes": {
-                    "ArrangementName": arrangement_name,
-                    "DLCKey": dlc_key,
-                    "LeaderboardChallengeRating": 0,
-                    "ManifestUrn": f"urn:database:json-db:{dlc_key}_{arr_lower}",
-                    "MasterID_RDV": master_id,
-                    "PersistentID": persistent_id,
-                    "SongKey": dlc_key,
-                    "SongLength": song_length,
-                    "SongName": song_title,
-                    "ArtistName": artist,
+                    "AlbumArt": f"urn:image:dds:album_{dlc_key}",
                     "AlbumName": album or "",
-                    "SongYear": int(year) if year else 2024,
-                    "Tuning": {f"string{i}": v for i, v in enumerate(tuning)},
+                    "AlbumNameSort": album or "",
+                    "ArrangementName": arrangement_name,
+                    "ArrangementProperties": arr_props,
                     "ArrangementSort": 0,
-                    "RouteMask": route_mask,
+                    "ArrangementType": 0,
+                    "ArtistName": artist,
+                    "ArtistNameSort": artist,
+                    "BlockAsset": f"urn:emergent-world:{dlc_key}",
                     "CapoFret": 0,
                     "CentOffset": 0.0,
+                    "ChordTemplates": [],
+                    "Chords": {},
+                    "DLC": True,
+                    "DLCKey": dlc_key_camel,
                     "DNA_Chords": 0.0,
                     "DNA_Riffs": 0.0,
                     "DNA_Solo": 0.0,
+                    "DynamicVisualDensity": dynamic_density,
+                    "EasyMastery": 0.0,
+                    "FullName": f"{dlc_key}_{arrangement_name}",
+                    "LastConversionDateTime": "01-01-24 00:00",
+                    "LeaderboardChallengeRating": 0,
+                    "ManifestUrn": f"urn:database:json-db:{dlc_key}_{arr_lower}",
+                    "MasterID_PS3": -1,
+                    "MasterID_RDV": master_id,
+                    "MasterID_XBox360": -1,
+                    "MaxPhraseDifficulty": 0,
+                    "MediumMastery": 0.0,
                     "NotesEasy": 0.0,
                     "NotesMedium": 0.0,
                     "NotesHard": 0.0,
-                    "Tones": [],
-                    "Tone_Base": "Default",
-                    "Tone_Multiplayer": "",
+                    "PersistentID": persistent_id.replace("-", "").upper(),
+                    "PhraseIterations": [],
+                    "Phrases": [],
+                    "PreviewBankPath": f"song_{dlc_key}_preview.bnk",
+                    "RelativeDifficulty": 0,
+                    "RouteMask": route_mask,
+                    "SKU": "RS2",
+                    "Score_MaxNotes": 0.0,
+                    "Score_PNV": 0.0,
+                    "Sections": [],
+                    "Shipping": True,
+                    "ShowlightsXML": f"urn:application:xml:{dlc_key}_showlights",
+                    "SongAsset": f"urn:application:musicgame-song:{dlc_key}_{arr_lower}",
+                    "SongAverageTempo": 120.0,
+                    "SongBank": f"song_{dlc_key}.bnk",
+                    "SongDiffEasy": 0.0,
+                    "SongDiffHard": 0.0,
+                    "SongDiffMed": 0.0,
+                    "SongDifficulty": 0.0,
+                    "SongEvent": f"Play_{dlc_key}",
+                    "SongKey": dlc_key_camel,
+                    "SongLength": song_length,
+                    "SongName": song_title,
+                    "SongNameSort": song_title,
+                    "SongOffset": 0.0,
+                    "SongPartition": 1,
+                    "SongXml": f"urn:application:xml:{dlc_key}_{arr_lower}",
+                    "SongYear": int(year) if year else 0,
+                    "TargetScore": 100000,
+                    "Techniques": {},
                     "Tone_A": "",
                     "Tone_B": "",
+                    "Tone_Base": "Default",
                     "Tone_C": "",
                     "Tone_D": "",
+                    "Tone_Multiplayer": "",
+                    "Tones": [],
+                    "Tuning": tuning_dict,
                 }
             }
         },
@@ -240,10 +370,11 @@ def build_cdlc(
             tuning_el = root.find("tuning")
             tuning = [int(tuning_el.get(f"string{j}", "0")) for j in range(6)] if tuning_el is not None else [0]*6
 
-            # Generate manifest
+            # Generate manifest (first arrangement of each type is "represent")
             manifest = _generate_manifest(
                 dlc_key, arr_name, title, artist, album, year,
                 song_length, tuning, persistent_id, master_id,
+                is_represent=(i == 0),
             )
             manifests.append(manifest)
 
@@ -272,11 +403,16 @@ def build_cdlc(
         audio_dir = build_dir / "audio" / "windows"
         audio_dir.mkdir(parents=True, exist_ok=True)
 
+        # Compute a deterministic fileID for the Wwise sound bank.
+        # The PsarcImporter finds the WEM by scanning PSARC entries for one
+        # whose filename contains str(fileID), so the WEM must be named {fileID}.wem.
+        wem_file_id = zlib.crc32(dlc_key.encode()) & 0x7FFFFFFF
+        bank_id     = zlib.crc32(f"song_{dlc_key}".encode()) & 0xFFFFFFFF
+
         # Convert audio to OGG if needed, then copy as .wem
-        # (Rocksmith actually needs Wwise WEM, but many CDLCs ship with
-        # renamed OGG files and the game accepts them)
+        # (Rocksmith accepts renamed OGG files as .wem)
         audio_ext = Path(audio_path).suffix.lower()
-        wem_path = audio_dir / f"song_{dlc_key}.wem"
+        wem_path = audio_dir / f"{wem_file_id}.wem"
 
         if not os.path.exists(audio_path):
             raise FileNotFoundError(f"Audio file not found: {audio_path}")
@@ -308,11 +444,12 @@ def build_cdlc(
             else:
                 raise RuntimeError(f"Failed to convert audio: {audio_path}")
 
-        # Create a minimal .bnk (soundbank) - empty placeholder
-        bnk_path = audio_dir / f"song_{dlc_key}.bnk"
-        bnk_path.write_bytes(b'\x00' * 64)
-        bnk_preview = audio_dir / f"song_{dlc_key}_preview.bnk"
-        bnk_preview.write_bytes(b'\x00' * 64)
+        # Generate proper sound banks with BKHD + DIDX so DLC Builder can import.
+        # Both main and preview reference the same WEM file_id — the importer
+        # uses str(file_id) to find the WEM entry in the PSARC.
+        bnk_data = _generate_bnk(wem_file_id, bank_id)
+        (audio_dir / f"song_{dlc_key}.bnk").write_bytes(bnk_data)
+        (audio_dir / f"song_{dlc_key}_preview.bnk").write_bytes(bnk_data)
 
         # ── Album art ─────────────────────────────────────────────────────
         progress("Processing album art...", 75)
@@ -345,6 +482,11 @@ def build_cdlc(
         (arr_dir / f"{dlc_key}_showlights.xml").write_text(
             _generate_showlights(song_length)
         )
+
+        # ── Flat model (required by DLC Builder / PsarcImporter) ─────────
+        flat_dir = build_dir / "flatmodels" / "rs"
+        flat_dir.mkdir(parents=True, exist_ok=True)
+        (flat_dir / "rsenumerable_song.flat").write_bytes(_RSENUMERABLE_SONG_FLAT)
 
         # ── XBlock ────────────────────────────────────────────────────────
         xblock_dir = build_dir / "gamexblocks" / "nsongs"
