@@ -3,7 +3,7 @@
 Steps:
   1. Compile TypeScript + Tailwind CSS  (npm run build)
   2. Bundle everything with PyInstaller (gp_to_psarc.spec)
-  3. Zip dist/gp-to-psarc/ → gp-to-psarc-v<VERSION>.zip
+  3. Zip dist/gp-to-psarc/ -> gp-to-psarc-v<VERSION>.zip
 
 Usage:
   py build_dist.py                   # local build, version 1.0
@@ -43,7 +43,7 @@ def main() -> None:
         for f in out_dir.rglob("*"):
             z.write(f, Path("gp-to-psarc") / f.relative_to(out_dir))
 
-    print(f"\n✓ Built: {zip_path} ({zip_path.stat().st_size // 1024 // 1024} MB)")
+    print(f"\nDone: {zip_path} ({zip_path.stat().st_size // 1024 // 1024} MB)")
 
 
 if __name__ == "__main__":
