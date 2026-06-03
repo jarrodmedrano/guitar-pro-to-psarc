@@ -38,7 +38,7 @@ def main() -> None:
 
     out_dir = ROOT / "dist" / "gp-to-psarc"
     zip_path = ROOT / f"gp-to-psarc-v{args.version}.zip"
-    print(f"\n>>> Zipping {out_dir} → {zip_path}")
+    print(f"\n>>> Zipping {out_dir} -> {zip_path}")
     with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as z:
         for f in out_dir.rglob("*"):
             z.write(f, Path("gp-to-psarc") / f.relative_to(out_dir))
