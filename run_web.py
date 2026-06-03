@@ -4,6 +4,13 @@ import threading
 import webbrowser
 from pathlib import Path
 
+# PyInstaller with console=False sets stdout/stderr to None.
+# Uvicorn's default log formatter calls .isatty() on them and crashes.
+if sys.stdout is None:
+    sys.stdout = open(os.devnull, "w")
+if sys.stderr is None:
+    sys.stderr = open(os.devnull, "w")
+
 # When running as a PyInstaller bundle, fix paths before any lib imports
 if hasattr(sys, "_MEIPASS"):
     base = Path(sys._MEIPASS)
