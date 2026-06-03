@@ -112,6 +112,21 @@ async def upload_art(session_id: str = Form(...), file: UploadFile = File(...)):
     return {"ok": True}
 
 
+@app.post("/detect-offset")
+async def detect_offset(session_id: str = Form(...)):
+    try:
+        session = get_session(session_id)
+    except KeyError:
+        raise HTTPException(404, "Session expired")
+
+    if not session.audio_path or not session.audio_path.exists():
+        return {"offset": 0.0}
+
+    import audio_sync
+    offset = audio_sync.detect_offset(str(session.audio_path), str(session.input_path))
+    return {"offset": offset}
+
+
 @app.websocket("/ws/build")
 async def ws_build(
     ws: WebSocket,
@@ -122,6 +137,7 @@ async def ws_build(
     year: str = "",
     tracks: str = "",
     arrangements: str = "",
+    audio_offset: float = 0.0,
 ):
     await ws.accept()
 
@@ -136,6 +152,7 @@ async def ws_build(
         year=year,
         track_indices=track_indices,
         arrangement_names=arrangement_names,
+        audio_offset=audio_offset,
     )
 
     q: asyncio.Queue = asyncio.Queue()

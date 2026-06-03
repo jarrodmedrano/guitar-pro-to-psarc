@@ -9,6 +9,7 @@ dependencies = [
     "midiutil>=1.2.1",         # MIDI generation (used by gp2midi)
     "Pillow>=10.0",            # Album art resizing (optional, falls back to placeholder)
     "mutagen>=1.47",           # Audio tag reading (ID3, Vorbis, FLAC)
+    "librosa>=0.10",           # Beat detection for audio offset auto-sync
 ]
 
 # External tools required (not pip-installable):

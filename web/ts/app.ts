@@ -32,6 +32,7 @@ type WsMessage =
 
 let sessionId = "";
 let audioReady = false;
+let audioOffset = 0;
 
 // ── Panel helpers ────────────────────────────────────────────────────────────
 
@@ -261,6 +262,11 @@ function resetAudioZone(): void {
     <span class="block text-xs text-zinc-500 mt-0.5">Optional — MIDI audio used if omitted</span>`;
   audioDropzone.classList.remove("border-emerald-500");
   audioDropzone.classList.add("border-zinc-700");
+  audioOffset = 0;
+  el<HTMLInputElement>("audio-offset").value = "0";
+  el("audio-sync").classList.add("hidden");
+  el("sync-status").classList.add("hidden");
+  el("sync-status").textContent = "";
 }
 
 audioDropzone.addEventListener("dragover", e => {
@@ -305,6 +311,7 @@ async function handleAudioFile(file: File): Promise<void> {
     audioLabel.innerHTML = `<span class="text-emerald-400">✓ ${file.name}</span>`;
 
     applyAudioMeta(meta);
+    el("audio-sync").classList.remove("hidden");
   } catch (err) {
     audioLabel.innerHTML = `<span class="text-red-400">Upload failed: ${(err as Error).message}</span>`;
   } finally {
@@ -334,6 +341,40 @@ function applyAudioMeta(meta: AudioMeta): void {
       <span class="block text-xs text-indigo-400 mt-0.5">Filled ${filled} field${filled > 1 ? "s" : ""} from audio tags</span>`;
   }
 }
+
+// ── Audio sync ───────────────────────────────────────────────────────────────
+
+el<HTMLInputElement>("audio-offset").addEventListener("input", e => {
+  audioOffset = parseFloat((e.target as HTMLInputElement).value) || 0;
+});
+
+el("auto-detect-btn").addEventListener("click", async () => {
+  const btn = el<HTMLButtonElement>("auto-detect-btn");
+  const status = el("sync-status");
+  btn.disabled = true;
+  btn.textContent = "Detecting…";
+  status.className = "text-xs text-zinc-400";
+  status.textContent = "Analysing audio…";
+  status.classList.remove("hidden");
+
+  try {
+    const form = new FormData();
+    form.append("session_id", sessionId);
+    const res = await fetch("/detect-offset", { method: "POST", body: form });
+    if (!res.ok) throw new Error((await res.json()).detail ?? res.statusText);
+    const { offset }: { offset: number } = await res.json();
+    audioOffset = offset;
+    el<HTMLInputElement>("audio-offset").value = String(offset);
+    status.className = "text-xs text-emerald-400";
+    status.textContent = `Detected ${offset.toFixed(3)} s — adjust by ear if needed`;
+  } catch (err) {
+    status.className = "text-xs text-red-400";
+    status.textContent = `Detection failed: ${(err as Error).message}`;
+  } finally {
+    btn.disabled = false;
+    btn.textContent = "Auto Detect";
+  }
+});
 
 // ── Back / again buttons ─────────────────────────────────────────────────────
 
@@ -379,6 +420,7 @@ function startBuild(): void {
     title, artist, album, year,
     tracks: indices.join(","),
     arrangements: arrangements.join(","),
+    audio_offset: String(audioOffset),
   });
   const ws = new WebSocket(`${wsProto}://${location.host}/ws/build?${params}`);
 

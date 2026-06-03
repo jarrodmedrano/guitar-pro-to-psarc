@@ -20,6 +20,7 @@ class BuildParams:
     year: str
     track_indices: list[int]
     arrangement_names: list[str]
+    audio_offset: float = 0.0
 
 
 def _safe(s: str) -> str:
@@ -41,6 +42,7 @@ def run_build(params: BuildParams, report: ProgressFn, result_queue) -> None:
             str(session.xml_dir),
             track_indices=params.track_indices,
             arrangement_names=name_map,
+            audio_offset=params.audio_offset,
         )
 
         # Filenames are "{track_name}_{ArrangementType}.xml"

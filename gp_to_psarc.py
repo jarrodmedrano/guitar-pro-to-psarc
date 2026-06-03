@@ -53,6 +53,8 @@ def convert(
     artist: str | None,
     album: str | None,
     year: str | None,
+    audio_offset: float = 0.0,
+    auto_sync: bool = False,
 ) -> str:
     from gp2rs import convert_file, auto_select_tracks
 
@@ -75,11 +77,19 @@ def convert(
         xml_dir = tmp_path / "xml"
         xml_dir.mkdir()
 
+        if auto_sync and audio:
+            from audio_sync import detect_offset
+            audio_offset = detect_offset(audio, gp_path)
+            print(f"Auto-detected audio offset: {audio_offset:.3f} s")
+        elif audio_offset:
+            print(f"Using audio offset: {audio_offset:.3f} s")
+
         print(f"Converting {len(track_indices)} track(s) to Rocksmith XML...")
         xml_files = convert_file(
             gp_path, str(xml_dir),
             track_indices=track_indices,
             arrangement_names=arrangement_names,
+            audio_offset=audio_offset,
         )
 
         # Filenames are "{track_name}_{ArrangementType}.xml"; extract the type.
@@ -128,10 +138,15 @@ def main() -> None:
     parser.add_argument("--artist", help="Override artist name (default: read from file)")
     parser.add_argument("--album", help="Override album name (default: read from file)")
     parser.add_argument("--year", help="Override release year")
+    parser.add_argument("--offset", type=float, default=0.0, metavar="SECONDS",
+                        help="Audio offset in seconds — how far into the audio the chart's first beat falls")
+    parser.add_argument("--auto-sync", action="store_true",
+                        help="Auto-detect audio offset from the audio file (requires --audio and librosa)")
     args = parser.parse_args()
 
     try:
-        convert(args.input, args.output, args.audio, args.title, args.artist, args.album, args.year)
+        convert(args.input, args.output, args.audio, args.title, args.artist, args.album, args.year,
+                audio_offset=args.offset, auto_sync=args.auto_sync)
     except KeyboardInterrupt:
         sys.exit(130)
     except Exception as e:
