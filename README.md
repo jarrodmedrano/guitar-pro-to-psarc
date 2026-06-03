@@ -4,17 +4,19 @@ Converts Guitar Pro files (`.gp`, `.gp3`, `.gp4`, `.gp5`, `.gpx`) to Rocksmith 2
 
 Includes a drag-and-drop web UI and a command-line interface.
 
+![gp-to-psarc web UI](readme/README.png)
+
 ---
 
 ## Requirements
 
-| Tool | Purpose | Notes |
-|---|---|---|
-| [Python 3.10+](https://www.python.org/downloads/) | Backend runtime | Use the `py` launcher on Windows |
-| [Node.js + npm](https://nodejs.org/) | Frontend build (TypeScript/Tailwind) | LTS version recommended |
-| [.NET 10 SDK](https://dotnet.microsoft.com/en-us/download/dotnet/10.0) | Build RsCli (one-time) | Only needed for the initial RsCli build |
-| [ffmpeg](https://ffmpeg.org/download.html) | Audio conversion | Must be on PATH |
-| [FluidSynth](https://www.fluidsynth.org/) + a soundfont | MIDI audio rendering | Optional — only needed if not supplying your own audio file |
+| Tool                                                                   | Purpose                              | Notes                                                       |
+| ---------------------------------------------------------------------- | ------------------------------------ | ----------------------------------------------------------- |
+| [Python 3.10+](https://www.python.org/downloads/)                      | Backend runtime                      | Use the `py` launcher on Windows                            |
+| [Node.js + npm](https://nodejs.org/)                                   | Frontend build (TypeScript/Tailwind) | LTS version recommended                                     |
+| [.NET 10 SDK](https://dotnet.microsoft.com/en-us/download/dotnet/10.0) | Build RsCli (one-time)               | Only needed for the initial RsCli build                     |
+| [ffmpeg](https://ffmpeg.org/download.html)                             | Audio conversion                     | Must be on PATH                                             |
+| [FluidSynth](https://www.fluidsynth.org/) + a soundfont                | MIDI audio rendering                 | Optional — only needed if not supplying your own audio file |
 
 ---
 
@@ -68,6 +70,7 @@ Or double-click **`start-web.bat`**.
 The browser opens automatically to `http://127.0.0.1:8765`.
 
 **Workflow:**
+
 1. Drop a Guitar Pro file onto the drop zone
 2. Edit song metadata (title, artist, album, year) — auto-filled from the file and audio tags
 3. Drop an album art image (jpg/png/webp) — optional
@@ -77,6 +80,7 @@ The browser opens automatically to `http://127.0.0.1:8765`.
 7. Click **Download** when done
 
 Drop the `.psarc` into your Rocksmith 2014 DLC folder:
+
 ```
 Steam\steamapps\common\Rocksmith2014\dlc\
 ```
@@ -93,14 +97,14 @@ py gp_to_psarc.py song.gp  --output out.psarc --title "My Song" --artist "Me"
 
 **Options:**
 
-| Flag | Description |
-|---|---|
-| `-o / --output` | Output `.psarc` path (default: same directory as input) |
-| `--audio` | Audio file to embed. If omitted, MIDI audio is rendered via FluidSynth |
-| `--title` | Override song title (default: read from GP file metadata) |
-| `--artist` | Override artist name |
-| `--album` | Override album name |
-| `--year` | Override release year |
+| Flag            | Description                                                            |
+| --------------- | ---------------------------------------------------------------------- |
+| `-o / --output` | Output `.psarc` path (default: same directory as input)                |
+| `--audio`       | Audio file to embed. If omitted, MIDI audio is rendered via FluidSynth |
+| `--title`       | Override song title (default: read from GP file metadata)              |
+| `--artist`      | Override artist name                                                   |
+| `--album`       | Override album name                                                    |
+| `--year`        | Override release year                                                  |
 
 ---
 
@@ -131,6 +135,7 @@ py build_dist.py
 Output: `gp-to-psarc-v1.0.zip`
 
 **Friend's install:**
+
 1. Unzip
 2. Double-click `gp-to-psarc.exe`
 3. Browser opens automatically
