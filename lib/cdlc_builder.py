@@ -67,10 +67,63 @@ def _sanitize_key(artist: str, title: str) -> str:
     return re.sub(r"[^a-z0-9]", "", combined.lower())[:40]
 
 
+def _placeholder_tone(key: str, arr_name: str) -> dict:
+    """Return a minimal valid Rocksmith 2014 tone definition for an arrangement.
+
+    Gear keys and knob values are taken verbatim from the DLC Builder default
+    tone files so they are guaranteed to resolve in-game.
+    """
+    is_bass = arr_name.lower() == "bass"
+    if is_bass:
+        amp = {
+            "Type": "Amps",
+            "KnobValues": {
+                "Bass_Amp_EdenWT550_Bass": 2, "Bass_Amp_EdenWT550_Mid": 4,
+                "Bass_Amp_EdenWT550_LoFreq": 300, "Bass_Amp_EdenWT550_HiFreq": 2.6,
+                "Bass_Amp_EdenWT550_Lo": -4, "Bass_Amp_EdenWT550_Hi": -2,
+                "Bass_Amp_EdenWT550_MidFreq": 1200, "Bass_Amp_EdenWT550_Treble": 8,
+                "Bass_Amp_EdenWT550_Enhance": 49, "Bass_Amp_EdenWT550_Gain": 14,
+            },
+            "Key": "Bass_Amp_EdenWT550",
+        }
+        cabinet = {"Type": "Cabinets", "KnobValues": {}, "Key": "Bass_Cab_EdenD610XST_Condenser_Edge"}
+        descriptors = ["$[35715]BASS"]
+        volume = "-12.0"
+    else:
+        amp = {
+            "Type": "Amps",
+            "KnobValues": {
+                "Amp_MarshallPlexi_Loudness1": 88, "Amp_MarshallPlexi_Loudness2": 59,
+                "Amp_MarshallPlexi_Mid": 85, "Amp_MarshallPlexi_Bass": 82,
+                "Amp_MarshallPlexi_Pres": 10, "Amp_MarshallPlexi_Treble": 89,
+            },
+            "Key": "Amp_MarshallPlexi",
+        }
+        cabinet = {"Type": "Cabinets", "KnobValues": {}, "Key": "Cab_Marshall1960TV_Ribbon_Cone"}
+        descriptors = ["$[35724]LEAD"]
+        volume = "-18.0"
+
+    return {
+        "GearList": {
+            "Amp": amp,
+            "Cabinet": cabinet,
+            "Rack1": None, "Rack2": None, "Rack3": None, "Rack4": None,
+            "PrePedal1": None, "PrePedal2": None, "PrePedal3": None, "PrePedal4": None,
+            "PostPedal1": None, "PostPedal2": None, "PostPedal3": None, "PostPedal4": None,
+        },
+        "ToneDescriptors": descriptors,
+        "NameSeparator": " - ",
+        "Volume": volume,
+        "Key": key,
+        "Name": key,
+    }
+
+
 def _generate_manifest(
     dlc_key: str, arrangement_name: str, song_title: str,
     artist: str, album: str, year: str, song_length: float,
     tuning: list[int], persistent_id: str, master_id: int,
+    tone_key: str = "Default", tone: dict | None = None,
     is_represent: bool = True,
 ) -> dict:
     """Generate a Rocksmith manifest JSON for an arrangement."""
@@ -195,11 +248,11 @@ def _generate_manifest(
                     "Techniques": {},
                     "Tone_A": "",
                     "Tone_B": "",
-                    "Tone_Base": "Default",
+                    "Tone_Base": tone_key,
                     "Tone_C": "",
                     "Tone_D": "",
                     "Tone_Multiplayer": "",
-                    "Tones": [],
+                    "Tones": [tone] if tone is not None else [],
                     "Tuning": tuning_dict,
                 }
             }
@@ -370,10 +423,24 @@ def build_cdlc(
             tuning_el = root.find("tuning")
             tuning = [int(tuning_el.get(f"string{j}", "0")) for j in range(6)] if tuning_el is not None else [0]*6
 
+            # Tone: read tonebase key from XML, or derive a default from arrangement name
+            tonebase_el = root.find("tonebase")
+            arr_l = arr_name.lower()
+            if tonebase_el is not None and tonebase_el.text:
+                tone_key = tonebase_el.text.strip()
+            elif arr_l == "bass":
+                tone_key = "Default_Bass"
+            elif arr_l == "lead":
+                tone_key = "Default_Lead"
+            else:
+                tone_key = "Default_Rhythm"
+            tone = _placeholder_tone(tone_key, arr_name)
+
             # Generate manifest (first arrangement of each type is "represent")
             manifest = _generate_manifest(
                 dlc_key, arr_name, title, artist, album, year,
                 song_length, tuning, persistent_id, master_id,
+                tone_key=tone_key, tone=tone,
                 is_represent=(i == 0),
             )
             manifests.append(manifest)

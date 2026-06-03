@@ -833,6 +833,9 @@ def _build_xml(
 
     ET.SubElement(root, "title").text = title
     ET.SubElement(root, "arrangement").text = arrangement
+    arr_l = arrangement.lower()
+    default_tonebase = "Default_Bass" if arr_l == "bass" else "Default_Lead" if arr_l == "lead" else "Default_Rhythm"
+    ET.SubElement(root, "tonebase").text = default_tonebase
     ET.SubElement(root, "offset").text = f"{audio_offset:.3f}"
     ET.SubElement(root, "songLength").text = f"{song_length:.3f}"
     ET.SubElement(root, "startBeat").text = f"{beats[0].time:.3f}" if beats else "0.000"
