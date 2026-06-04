@@ -20,7 +20,8 @@ else:
     sys.path.insert(0, str(Path(__file__).parent / "lib"))
 
 import uvicorn
+from web.server import app
 
 if __name__ == "__main__":
     threading.Timer(1.5, lambda: webbrowser.open("http://127.0.0.1:8765")).start()
-    uvicorn.run("web.server:app", host="127.0.0.1", port=8765, log_level="warning")
+    uvicorn.run(app, host="127.0.0.1", port=8765, log_level="warning")
